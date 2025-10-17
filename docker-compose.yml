@@ -21,7 +21,7 @@ services:
     volumes:
       - aws_sso_cache:/home/appuser/.aws/sso/cache
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/v1/models"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:${PORT:-8080}/healthy"]
       interval: 30s
       timeout: 10s
       retries: 3

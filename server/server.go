@@ -43,6 +43,11 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 	r.GET("/", func(c *gin.Context) {
 		c.File("./static/index.html")
 	})
+	r.GET("/healthy", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status": "ok",
+		})
+	})
 
 	// API端点 - 纯数据服务
 	r.GET("/api/tokens", handleTokenPoolAPI)
