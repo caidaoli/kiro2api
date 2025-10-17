@@ -4,7 +4,7 @@ services:
     container_name: kiro2api
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${PORT:-8080}:${PORT:-8080}"
     environment:
       # Token配置 (JSON格式，支持多账号池和双认证方式)
       - KIRO_AUTH_TOKEN=${KIRO_AUTH_TOKEN}

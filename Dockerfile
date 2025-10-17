@@ -48,8 +48,12 @@ RUN mkdir -p /home/appuser/.aws/sso/cache && \
 # 切换到非 root 用户
 USER appuser
 
+ARG PORT=8080
+
+ENV PORT=$PORT
+
 # 暴露默认端口
-EXPOSE 8080
+EXPOSE $PORT
 
 # 设置默认命令
 CMD ["./kiro2api"]
