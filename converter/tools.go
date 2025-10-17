@@ -32,6 +32,11 @@ func validateAndProcessTools(tools []types.OpenAITool) ([]types.AnthropicTool, e
 			continue
 		}
 
+		// 过滤不支持的工具：web_search (静默过滤，不发送到上游)
+		if tool.Function.Name == "web_search" || tool.Function.Name == "websearch" {
+			continue
+		}
+
 		// 验证参数schema
 		if tool.Function.Parameters == nil {
 			validationErrors = append(validationErrors, fmt.Sprintf("tool[%d]: 参数schema不能为空", i))
@@ -236,6 +241,10 @@ func convertOpenAIContentToAnthropic(content any) (any, error) {
 					// 如果转换失败，跳过该块但继续处理其他块
 					continue
 				}
+				// 如果convertedBlock为nil，表示该块需要被过滤（如web_search）
+				if convertedBlock == nil {
+					continue
+				}
 				convertedBlocks = append(convertedBlocks, convertedBlock)
 			} else {
 				// 非map类型的项目，直接保留
@@ -299,8 +308,17 @@ func convertContentBlock(block map[string]any) (map[string]any, error) {
 		// 已经是Anthropic格式，无需转换
 		return block, nil
 
-	case "tool_result", "tool_use":
-		// 工具相关块，无需转换
+	case "tool_use":
+		// 过滤不支持的web_search工具调用（静默过滤，返回nil表示跳过）
+		if name, ok := block["name"].(string); ok {
+			if name == "web_search" || name == "websearch" {
+				return nil, nil
+			}
+		}
+		return block, nil
+
+	case "tool_result":
+		// tool_result块无需转换，直接返回
 		return block, nil
 
 	default:

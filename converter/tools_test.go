@@ -169,6 +169,102 @@ func TestValidateAndProcessTools_MixedValidInvalid(t *testing.T) {
 	}
 }
 
+func TestValidateAndProcessTools_FilterWebSearch(t *testing.T) {
+	tools := []types.OpenAITool{
+		{
+			Type: "function",
+			Function: types.OpenAIFunction{
+				Name:        "get_weather",
+				Description: "Get weather information",
+				Parameters: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"location": map[string]any{"type": "string"},
+					},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: types.OpenAIFunction{
+				Name:        "web_search",
+				Description: "Search the web",
+				Parameters: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"query": map[string]any{"type": "string"},
+					},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: types.OpenAIFunction{
+				Name:        "calculator",
+				Description: "Perform calculations",
+				Parameters: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"expression": map[string]any{"type": "string"},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := validateAndProcessTools(tools)
+
+	// web_search should be filtered out silently, no error
+	assert.NoError(t, err)
+	assert.Len(t, result, 2)
+	assert.Equal(t, "get_weather", result[0].Name)
+	assert.Equal(t, "calculator", result[1].Name)
+
+	// Ensure web_search is not in the result
+	for _, tool := range result {
+		assert.NotEqual(t, "web_search", tool.Name)
+		assert.NotEqual(t, "websearch", tool.Name)
+	}
+}
+
+func TestValidateAndProcessTools_FilterWebSearchVariant(t *testing.T) {
+	tools := []types.OpenAITool{
+		{
+			Type: "function",
+			Function: types.OpenAIFunction{
+				Name:        "websearch",
+				Description: "Search the web (variant name)",
+				Parameters: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"query": map[string]any{"type": "string"},
+					},
+				},
+			},
+		},
+		{
+			Type: "function",
+			Function: types.OpenAIFunction{
+				Name:        "valid_tool",
+				Description: "A valid tool",
+				Parameters: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"param": map[string]any{"type": "string"},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := validateAndProcessTools(tools)
+
+	// websearch variant should also be filtered
+	assert.NoError(t, err)
+	assert.Len(t, result, 1)
+	assert.Equal(t, "valid_tool", result[0].Name)
+}
+
 func TestConvertOpenAIToolChoiceToAnthropic_StringAuto(t *testing.T) {
 	result := convertOpenAIToolChoiceToAnthropic("auto")
 
@@ -316,4 +412,82 @@ func TestConvertOpenAIContentToAnthropic_Default(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, 12345, result)
+}
+
+func TestConvertOpenAIContentToAnthropic_FilterWebSearchInHistory(t *testing.T) {
+	content := []any{
+		map[string]any{
+			"type": "text",
+			"text": "Let me search for that information.",
+		},
+		map[string]any{
+			"type": "tool_use",
+			"id":   "call_123",
+			"name": "web_search",
+			"input": map[string]any{
+				"query": "test query",
+			},
+		},
+		map[string]any{
+			"type": "tool_use",
+			"id":   "call_456",
+			"name": "calculator",
+			"input": map[string]any{
+				"expression": "2+2",
+			},
+		},
+	}
+
+	result, err := convertOpenAIContentToAnthropic(content)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+
+	// 转换后的内容应该过滤掉web_search，只保留text和calculator
+	resultArray, ok := result.([]any)
+	assert.True(t, ok)
+	assert.Len(t, resultArray, 2, "应该过滤掉web_search，只保留2个块")
+
+	// 验证第一个是text块
+	block1, ok := resultArray[0].(map[string]any)
+	assert.True(t, ok)
+	assert.Equal(t, "text", block1["type"])
+
+	// 验证第二个是calculator的tool_use块
+	block2, ok := resultArray[1].(map[string]any)
+	assert.True(t, ok)
+	assert.Equal(t, "tool_use", block2["type"])
+	assert.Equal(t, "calculator", block2["name"])
+}
+
+func TestConvertOpenAIContentToAnthropic_FilterWebSearchVariantInHistory(t *testing.T) {
+	content := []any{
+		map[string]any{
+			"type": "tool_use",
+			"id":   "call_789",
+			"name": "websearch",
+			"input": map[string]any{
+				"query": "another query",
+			},
+		},
+		map[string]any{
+			"type": "text",
+			"text": "Some text",
+		},
+	}
+
+	result, err := convertOpenAIContentToAnthropic(content)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+
+	// 转换后的内容应该过滤掉websearch变体，只保留text
+	resultArray, ok := result.([]any)
+	assert.True(t, ok)
+	assert.Len(t, resultArray, 1, "应该过滤掉websearch，只保留1个块")
+
+	// 验证是text块
+	block, ok := resultArray[0].(map[string]any)
+	assert.True(t, ok)
+	assert.Equal(t, "text", block["type"])
 }

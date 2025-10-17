@@ -307,6 +307,11 @@ func BuildCodeWhispererRequest(anthropicReq types.AnthropicRequest, ctx *gin.Con
 				continue
 			}
 
+			// 过滤不支持的工具：web_search (静默过滤，不发送到上游)
+			if tool.Name == "web_search" || tool.Name == "websearch" {
+				continue
+			}
+
 			// logger.Debug("转换工具定义",
 			// 	logger.Int("tool_index", i),
 			// 	logger.String("tool_name", tool.Name),
@@ -482,6 +487,11 @@ func extractToolUsesFromMessage(content any) []types.ToolUseEntry {
 							toolUse.Name = name
 						}
 
+						// 过滤不支持的工具：web_search (静默过滤)
+						if toolUse.Name == "web_search" || toolUse.Name == "websearch" {
+							continue
+						}
+
 						// 提取 input
 						if input, ok := block["input"].(map[string]any); ok {
 							toolUse.Input = input
@@ -508,6 +518,11 @@ func extractToolUsesFromMessage(content any) []types.ToolUseEntry {
 
 				if block.Name != nil {
 					toolUse.Name = *block.Name
+				}
+
+				// 过滤不支持的工具：web_search (静默过滤)
+				if toolUse.Name == "web_search" || toolUse.Name == "websearch" {
+					continue
 				}
 
 				if block.Input != nil {
