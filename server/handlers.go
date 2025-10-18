@@ -405,6 +405,67 @@ func createTokenPreview(token string) string {
 	return "***" + suffix
 }
 
+// maskEmail 对邮箱进行脱敏处理
+// 规则：
+// - 用户名部分：保留前2位和后2位，中间用星号替换
+// - 域名部分：保留顶级域名和二级域名后缀，其他用星号替换
+// 示例：
+//   - caidaoli@gmail.com -> ca****li@*****.com
+//   - caidaolihz888@sun.edu.pl -> ca*********88@***.**.pl
+func maskEmail(email string) string {
+	if email == "" {
+		return ""
+	}
+
+	// 分割邮箱为用户名和域名
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		// 不是有效的邮箱格式，返回原值
+		return email
+	}
+
+	username := parts[0]
+	domain := parts[1]
+
+	// 处理用户名部分：保留前2位和后2位
+	var maskedUsername string
+	if len(username) <= 4 {
+		// 用户名太短，全部用星号替换
+		maskedUsername = strings.Repeat("*", len(username))
+	} else {
+		prefix := username[:2]
+		suffix := username[len(username)-2:]
+		middleLen := len(username) - 4
+		maskedUsername = prefix + strings.Repeat("*", middleLen) + suffix
+	}
+
+	// 处理域名部分：保留顶级域名和二级域名后缀
+	domainParts := strings.Split(domain, ".")
+	var maskedDomain string
+
+	if len(domainParts) == 1 {
+		// 只有一级域名（不常见），全部用星号替换
+		maskedDomain = strings.Repeat("*", len(domain))
+	} else if len(domainParts) == 2 {
+		// 二级域名（如 gmail.com）
+		// 主域名用星号替换，保留顶级域名
+		maskedDomain = strings.Repeat("*", len(domainParts[0])) + "." + domainParts[1]
+	} else {
+		// 三级或更多级域名（如 sun.edu.pl）
+		// 保留后两级域名，其他用星号替换
+		maskedParts := make([]string, len(domainParts))
+		for i := 0; i < len(domainParts)-2; i++ {
+			maskedParts[i] = strings.Repeat("*", len(domainParts[i]))
+		}
+		// 保留最后两级
+		maskedParts[len(domainParts)-2] = domainParts[len(domainParts)-2]
+		maskedParts[len(domainParts)-1] = domainParts[len(domainParts)-1]
+		maskedDomain = strings.Join(maskedParts, ".")
+	}
+
+	return maskedUsername + "@" + maskedDomain
+}
+
 // handleTokenPoolAPI 处理Token池API请求 - 恢复多token显示
 func handleTokenPoolAPI(c *gin.Context) {
 	var tokenList []any
@@ -489,7 +550,7 @@ func handleTokenPoolAPI(c *gin.Context) {
 		// 构建token数据
 		tokenData := map[string]any{
 			"index":           i,
-			"user_email":      userEmail,
+			"user_email":      maskEmail(userEmail), // 对邮箱进行脱敏处理
 			"token_preview":   createTokenPreview(tokenInfo.AccessToken),
 			"auth_type":       strings.ToLower(authConfig.AuthType),
 			"remaining_usage": available,

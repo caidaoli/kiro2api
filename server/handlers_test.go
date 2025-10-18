@@ -206,3 +206,141 @@ func TestCreateTokenPreview_EdgeCases(t *testing.T) {
 		})
 	}
 }
+
+// TestMaskEmail 测试邮箱脱敏功能
+func TestMaskEmail(t *testing.T) {
+	tests := []struct {
+		name     string
+		email    string
+		expected string
+	}{
+		{
+			name:     "标准Gmail邮箱",
+			email:    "caidaoli@gmail.com",
+			expected: "ca****li@*****.com",
+		},
+		{
+			name:     "长用户名多级域名",
+			email:    "caidaolihz888@sun.edu.pl",
+			expected: "ca*********88@***.edu.pl",
+		},
+		{
+			name:     "短用户名",
+			email:    "test@example.com",
+			expected: "****@*******.com",
+		},
+		{
+			name:     "极短用户名（4位）",
+			email:    "abcd@test.com",
+			expected: "****@****.com",
+		},
+		{
+			name:     "极短用户名（3位）",
+			email:    "abc@test.com",
+			expected: "***@****.com",
+		},
+		{
+			name:     "单字符用户名",
+			email:    "a@test.com",
+			expected: "*@****.com",
+		},
+		{
+			name:     "三级域名",
+			email:    "user@mail.company.com",
+			expected: "****@****.company.com", // user只有4位，全部用星号
+		},
+		{
+			name:     "四级域名",
+			email:    "admin@dev.mail.company.com",
+			expected: "ad*in@***.****.company.com", // admin是5位，保留前2后2
+		},
+		{
+			name:     "空邮箱",
+			email:    "",
+			expected: "",
+		},
+		{
+			name:     "无效格式（无@符号）",
+			email:    "notanemail",
+			expected: "notanemail",
+		},
+		{
+			name:     "无效格式（多个@符号）",
+			email:    "user@@domain.com",
+			expected: "user@@domain.com",
+		},
+		{
+			name:     "中文邮箱（边界情况）",
+			email:    "用户@域名.com",
+			expected: "\xe7\x94**\x88\xb7@******.com", // 中文按UTF-8字节处理
+		},
+		{
+			name:     "5位用户名",
+			email:    "alice@test.com",
+			expected: "al*ce@****.com",
+		},
+		{
+			name:     "6位用户名",
+			email:    "robert@test.com",
+			expected: "ro**rt@****.com",
+		},
+		{
+			name:     "超长用户名",
+			email:    "verylongusername123456@example.com",
+			expected: "ve******************56@*******.com", // 22位用户名，前2+中间18个*+后2
+		},
+		{
+			name:     "单级域名（不常见）",
+			email:    "user@localhost",
+			expected: "****@*********", // user只有4位，全部用星号
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := maskEmail(tt.email)
+			assert.Equal(t, tt.expected, result, "邮箱脱敏结果不符合预期")
+		})
+	}
+}
+
+// TestMaskEmail_PreservesLength 测试脱敏后长度保持一致
+func TestMaskEmail_PreservesLength(t *testing.T) {
+	emails := []string{
+		"test@example.com",
+		"caidaoli@gmail.com",
+		"admin@company.co.uk",
+		"user@mail.server.com",
+	}
+
+	for _, email := range emails {
+		masked := maskEmail(email)
+		if email != "" && len(email) > 0 {
+			// 验证脱敏后长度保持一致（除非是无效格式）
+			if len(masked) != len(email) {
+				// 只有在格式无效时才允许长度不同
+				assert.NotContains(t, email, "@", "有效邮箱脱敏后长度应保持一致")
+			}
+		}
+	}
+}
+
+// TestMaskEmail_SecurityProperties 测试脱敏的安全属性
+func TestMaskEmail_SecurityProperties(t *testing.T) {
+	email := "sensitive@private.com"
+	masked := maskEmail(email)
+
+	// 验证敏感信息被隐藏
+	assert.NotEqual(t, email, masked, "脱敏后不应与原邮箱相同")
+	assert.Contains(t, masked, "*", "脱敏结果应包含星号")
+	assert.Contains(t, masked, "@", "脱敏结果应保留@符号")
+
+	// 验证不包含完整的用户名
+	username := "sensitive"
+	assert.NotContains(t, masked, username, "不应包含完整用户名")
+
+	// 验证保留了部分信息用于识别
+	assert.Contains(t, masked, "se", "应保留用户名前2位")
+	assert.Contains(t, masked, "ve", "应保留用户名后2位")
+	assert.Contains(t, masked, ".com", "应保留顶级域名")
+}
