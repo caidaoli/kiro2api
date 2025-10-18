@@ -88,6 +88,11 @@ func GenerateStableConversationID(ctx *gin.Context) string {
 // GenerateStableAgentContinuationID 生成稳定的代理延续GUID
 // 基于客户端特征生成确定性的标准GUID格式，遵循SOLID-SRP原则
 func GenerateStableAgentContinuationID(ctx *gin.Context) string {
+	// 向后兼容：如果没有提供context，使用随机UUID
+	if ctx == nil {
+		return GenerateUUID()
+	}
+
 	// 检查是否有自定义的代理延续ID头（优先级最高）
 	if customAgentID := ctx.GetHeader("X-Agent-Continuation-ID"); customAgentID != "" {
 		return customAgentID
@@ -105,10 +110,9 @@ func buildAgentClientSignature(ctx *gin.Context) string {
 	clientIP := ctx.ClientIP()
 	userAgent := ctx.GetHeader("User-Agent")
 
-	// 为了区分conversationId和agentContinuationId，使用更细粒度的时间窗口
-	// 每10分钟内的同一客户端使用相同的agentContinuationId
-	timeWindow := time.Now().Format("200601021504") // 精确到10分钟
-	timeWindow = timeWindow[:len(timeWindow)-1]     // 截断到10分钟级别
+	// 统一使用1小时时间窗口，与ConversationId保持一致
+	// 确保在同一会话内AgentContinuationId保持稳定
+	timeWindow := time.Now().Format("2006010215") // 精确到小时
 
 	return fmt.Sprintf("agent|%s|%s|%s", clientIP, userAgent, timeWindow)
 }

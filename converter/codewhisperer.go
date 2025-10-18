@@ -424,34 +424,91 @@ func BuildCodeWhispererRequest(anthropicReq types.AnthropicRequest, ctx *gin.Con
 
 					// 清空缓冲区
 					userMessagesBuffer = nil
-				}
 
-				// 添加assistant消息
-				assistantMsg := types.HistoryAssistantMessage{}
-				assistantContent, err := utils.GetMessageContent(msg.Content)
-				if err == nil {
-					assistantMsg.AssistantResponseMessage.Content = assistantContent
+					// 添加assistant消息
+					assistantMsg := types.HistoryAssistantMessage{}
+					assistantContent, err := utils.GetMessageContent(msg.Content)
+					if err == nil {
+						assistantMsg.AssistantResponseMessage.Content = assistantContent
+					} else {
+						assistantMsg.AssistantResponseMessage.Content = ""
+					}
+
+					// 提取助手消息中的工具调用
+					toolUses := extractToolUsesFromMessage(msg.Content)
+					if len(toolUses) > 0 {
+						assistantMsg.AssistantResponseMessage.ToolUses = toolUses
+					} else {
+						assistantMsg.AssistantResponseMessage.ToolUses = nil
+					}
+
+					history = append(history, assistantMsg)
 				} else {
-					assistantMsg.AssistantResponseMessage.Content = ""
+					// 🚨 孤立的 assistant 消息：忽略并警告
+					// 这种情况发生在：1) 开头是 assistant  2) 连续的 assistant
+					logger.Warn("检测到孤立的assistant消息（前面没有user消息），已忽略",
+						logger.Int("message_index", i),
+						logger.String("content_preview", func() string {
+							content, _ := utils.GetMessageContent(msg.Content)
+							if len(content) > 50 {
+								return content[:50] + "..."
+							}
+							return content
+						}()))
+					// 不添加到历史记录，直接跳过
 				}
-
-				// 提取助手消息中的工具调用
-				toolUses := extractToolUsesFromMessage(msg.Content)
-				if len(toolUses) > 0 {
-					assistantMsg.AssistantResponseMessage.ToolUses = toolUses
-				} else {
-					assistantMsg.AssistantResponseMessage.ToolUses = nil
-				}
-
-				history = append(history, assistantMsg)
 			}
 		}
 
-		// 处理结尾的孤立user消息（理论上不应该存在，因为最后一条已经是current message）
-		// 但为了安全起见，如果有剩余的user消息缓冲区，记录警告
+		// 容错处理：自动配对结尾的孤立user消息
+		// 这种情况通常发生在客户端发送不规范的消息序列时
 		if len(userMessagesBuffer) > 0 {
-			logger.Warn("历史消息末尾存在孤立的user消息（未配对assistant）",
+			logger.Warn("历史消息末尾存在孤立的user消息，自动配对'OK'的assistant响应",
 				logger.Int("orphan_messages", len(userMessagesBuffer)))
+
+			// 合并所有孤立的user消息
+			mergedUserMsg := types.HistoryUserMessage{}
+			var contentParts []string
+			var allImages []types.CodeWhispererImage
+			var allToolResults []types.ToolResult
+
+			for _, userMsg := range userMessagesBuffer {
+				messageContent, messageImages, err := processMessageContent(userMsg.Content)
+				if err == nil && messageContent != "" {
+					contentParts = append(contentParts, messageContent)
+					if len(messageImages) > 0 {
+						allImages = append(allImages, messageImages...)
+					}
+				}
+
+				toolResults := extractToolResultsFromMessage(userMsg.Content)
+				if len(toolResults) > 0 {
+					allToolResults = append(allToolResults, toolResults...)
+				}
+			}
+
+			// 设置合并后的内容
+			mergedUserMsg.UserInputMessage.Content = strings.Join(contentParts, "\n")
+			if len(allImages) > 0 {
+				mergedUserMsg.UserInputMessage.Images = allImages
+			}
+			if len(allToolResults) > 0 {
+				mergedUserMsg.UserInputMessage.UserInputMessageContext.ToolResults = allToolResults
+				mergedUserMsg.UserInputMessage.Content = ""
+			}
+
+			mergedUserMsg.UserInputMessage.ModelId = modelId
+			mergedUserMsg.UserInputMessage.Origin = "AI_EDITOR"
+			history = append(history, mergedUserMsg)
+
+			// 自动添加"OK"的assistant响应进行配对 (容错处理)
+			assistantMsg := types.HistoryAssistantMessage{}
+			assistantMsg.AssistantResponseMessage.Content = "OK"
+			assistantMsg.AssistantResponseMessage.ToolUses = nil
+			history = append(history, assistantMsg)
+
+			logger.Debug("已自动配对孤立user消息",
+				logger.Int("history_length", len(history)))
 		}
 
 		cwReq.ConversationState.History = history
