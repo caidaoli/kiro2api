@@ -348,14 +348,7 @@ func handleNonStreamRequest(c *gin.Context, anthropicReq types.AnthropicRequest,
 	stopReasonManager := NewStopReasonManager(anthropicReq)
 
 	// 计算输出tokens（使用TokenEstimator统一算法）
-	baseTokens := estimator.EstimateTextTokens(textAgg)
-	outputTokens := baseTokens
-	if sawToolUse {
-		outputTokens = int(float64(baseTokens) * config.ToolCallTokenOverhead) // 使用配置常量
-	}
-	if outputTokens < 1 && len(textAgg) > 0 {
-		outputTokens = 1
-	}
+	outputTokens := estimator.EstimateOutputTokens(textAgg, sawToolUse)
 
 	stopReasonManager.UpdateToolCallStatus(sawToolUse, sawToolUse)
 	stopReason := stopReasonManager.DetermineStopReason()

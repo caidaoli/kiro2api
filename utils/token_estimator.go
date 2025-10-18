@@ -287,6 +287,37 @@ func (e *TokenEstimator) EstimateTextTokens(text string) int {
 	return tokens
 }
 
+// EstimateOutputTokens 估算输出响应的token数量
+// 用于统一处理流式和非流式响应的token计算
+//
+// 参数:
+//   - textContent: 输出的文本内容（包括工具调用的参数内容）
+//   - hasToolUse: 是否包含工具调用
+//
+// 返回:
+//   - 估算的token数量
+//
+// 设计原则:
+//   - SOLID-SRP: 单一职责，集中管理输出token计算
+//   - DRY: 消除handlers.go和stream_processor.go中的重复逻辑
+//   - 一致性: 与输入侧EstimateTokens使用相同的基础算法
+func (e *TokenEstimator) EstimateOutputTokens(textContent string, hasToolUse bool) int {
+	// 基础文本token估算
+	baseTokens := e.EstimateTextTokens(textContent)
+
+	// 工具调用结构化开销
+	if hasToolUse {
+		baseTokens = int(float64(baseTokens) * config.ToolCallTokenOverhead)
+	}
+
+	// 最小输出token保护
+	if baseTokens < config.MinOutputTokens && len(textContent) > 0 {
+		baseTokens = config.MinOutputTokens
+	}
+
+	return baseTokens
+}
+
 // estimateContentBlock 估算单个内容块的token数量（通用map格式）
 // 支持的内容类型：
 // - text: 文本块

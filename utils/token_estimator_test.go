@@ -329,3 +329,111 @@ func BenchmarkTokenEstimator(b *testing.B) {
 func stringPtr(s string) *string {
 	return &s
 }
+
+// TestEstimateOutputTokens 测试输出token估算方法
+func TestEstimateOutputTokens(t *testing.T) {
+	estimator := NewTokenEstimator()
+
+	tests := []struct {
+		name        string
+		textContent string
+		hasToolUse  bool
+		expected    int
+		description string
+	}{
+		{
+			name:        "简单文本无工具",
+			textContent: "Hello, world!",
+			hasToolUse:  false,
+			expected:    4,
+			description: "纯文本响应，无工具调用",
+		},
+		{
+			name:        "简单文本有工具",
+			textContent: "Hello, world!",
+			hasToolUse:  true,
+			expected:    5,
+			description: "文本响应 + 工具调用结构化开销",
+		},
+		{
+			name:        "空文本",
+			textContent: "",
+			hasToolUse:  false,
+			expected:    0,
+			description: "空响应",
+		},
+		{
+			name:        "长文本无工具",
+			textContent: "This is a longer text response that contains multiple sentences.",
+			hasToolUse:  false,
+			expected:    22,
+			description: "长文本响应，无工具调用",
+		},
+		{
+			name:        "长文本有工具",
+			textContent: "This is a longer text response that contains multiple sentences.",
+			hasToolUse:  true,
+			expected:    26,
+			description: "长文本响应 + 工具调用结构化开销",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := estimator.EstimateOutputTokens(tt.textContent, tt.hasToolUse)
+
+			// 允许±30%的误差
+			tolerance := float64(tt.expected) * 0.3
+			diff := math.Abs(float64(result - tt.expected))
+
+			if diff > tolerance {
+				t.Errorf("%s: 估算值=%d, 预期值=%d, 误差=%.1f%%",
+					tt.name, result, tt.expected, diff/float64(tt.expected)*100)
+			} else {
+				t.Logf("✅ %s: 估算值=%d, 预期值=%d",
+					tt.name, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestEstimateOutputTokens_Consistency 测试与原有逻辑的一致性
+func TestEstimateOutputTokens_Consistency(t *testing.T) {
+	estimator := NewTokenEstimator()
+
+	testCases := []struct {
+		textContent string
+		hasToolUse  bool
+	}{
+		{"Hello", false},
+		{"Hello", true},
+		{"This is a test message", false},
+		{"This is a test message", true},
+		{"你好世界", false},
+		{"你好世界", true},
+		{"", false},
+		{"", true},
+	}
+
+	for _, tc := range testCases {
+		// 新方法
+		newResult := estimator.EstimateOutputTokens(tc.textContent, tc.hasToolUse)
+
+		// 原有逻辑（模拟）
+		baseTokens := estimator.EstimateTextTokens(tc.textContent)
+		oldResult := baseTokens
+		if tc.hasToolUse {
+			oldResult = int(float64(baseTokens) * 1.2)
+		}
+		if oldResult < 1 && len(tc.textContent) > 0 {
+			oldResult = 1
+		}
+
+		if newResult != oldResult {
+			t.Errorf("不一致: textContent=%q, hasToolUse=%v, 新方法=%d, 原逻辑=%d",
+				tc.textContent, tc.hasToolUse, newResult, oldResult)
+		}
+	}
+
+	t.Logf("✅ 所有测试用例与原有逻辑一致")
+}
