@@ -46,12 +46,7 @@ const (
 
 // Token计算常量
 const (
-	// ToolCallTokenOverhead 工具调用的token开销系数
-	ToolCallTokenOverhead = 1.2
-
 	// TokenEstimationRatio 字符到token的估算比例
+	// 用于工具调用参数的JSON内容token估算
 	TokenEstimationRatio = 4
-
-	// MinOutputTokens 最小输出token数
-	MinOutputTokens = 1
 )

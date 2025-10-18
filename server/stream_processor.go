@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -34,7 +33,7 @@ type StreamProcessorContext struct {
 	compliantParser *parser.CompliantEventStreamParser
 
 	// 统计信息
-	totalOutputChars     int
+	totalOutputTokens    int // 累计发送给客户端的输出 token 数
 	totalReadBytes       int
 	totalProcessedEvents int
 	lastParseErr         error
@@ -222,10 +221,15 @@ func (ctx *StreamProcessorContext) sendFinalEvents() error {
 
 	ctx.stopReasonManager.UpdateToolCallStatus(hasActiveTools, hasCompletedTools)
 
-	// 计算输出tokens（使用TokenEstimator统一算法）
-	// 判断是否有工具调用（包括活跃的和已完成的）
-	hasToolUse := len(ctx.toolUseIdByBlockIndex) > 0 || len(ctx.completedToolUseIds) > 0
-	outputTokens := ctx.tokenEstimator.EstimateOutputTokensFromChars(ctx.totalOutputChars, hasToolUse)
+	// *** 关键修复：使用累计的实际发送 token 数 ***
+	// 设计原则：token 计费应该基于实际发送给客户端的 SSE 事件内容
+	// totalOutputTokens 在每次发送事件时累计，确保与实际输出内容一致
+	outputTokens := ctx.totalOutputTokens
+	
+	// 最小 token 保护：确保非空响应至少有 1 token
+	if outputTokens < 1 && (len(ctx.toolUseIdByBlockIndex) > 0 || len(ctx.completedToolUseIds) > 0) {
+		outputTokens = 1
+	}
 
 	// 确定stop_reason
 	stopReason := ctx.stopReasonManager.DetermineStopReason()
@@ -371,13 +375,56 @@ func (esp *EventStreamProcessor) processEvent(event parser.SSEEvent) error {
 		// 非严格模式下，违规事件被跳过但不中断流
 	}
 
-	// 更新输出字符统计 - 统计 dataMap 全量内容（符合“统计输出所有内容”的要求）
-	// 通过 JSON 序列化计算输出负载的字节长度，更贴近实际传输内容
-	if b, err := json.Marshal(dataMap); err == nil {
-		esp.ctx.totalOutputChars += len(b)
-	} else {
-		// 序列化失败时保底：不影响主流程，仅跳过统计
-		logger.Debug("数据序列化用于统计失败，跳过该事件", logger.Err(err))
+	// *** 关键修复：基于实际发送的 SSE 事件内容累计 token ***
+	// 设计原则：只统计包含实际内容的事件，忽略结构性事件
+	// 原因：
+	// 1. 计费准确性：客户端消费的是实际内容，而不是事件结构
+	// 2. 一致性：与非流式响应的 token 计算逻辑保持一致
+	// 3. 符合 Claude 官方计费规则：只计算内容 token，不计算结构开销
+	switch eventType {
+	case "content_block_delta":
+		// 内容增量事件：累计实际文本或 JSON 内容的 token
+		if delta, ok := dataMap["delta"].(map[string]any); ok {
+			deltaType, _ := delta["type"].(string)
+			
+			switch deltaType {
+			case "text_delta":
+				// 文本内容增量
+				if text, ok := delta["text"].(string); ok {
+					esp.ctx.totalOutputTokens += esp.ctx.tokenEstimator.EstimateTextTokens(text)
+				}
+			
+			case "input_json_delta":
+				// 工具调用参数 JSON 增量
+				if partialJSON, ok := delta["partial_json"].(string); ok {
+					// 使用字符数估算（JSON 密度约 4 字符/token）
+					esp.ctx.totalOutputTokens += len(partialJSON) / 4
+				}
+			}
+		}
+	
+	case "content_block_start":
+		// 内容块开始事件：累计结构性 token
+		// 根据 Claude 官方文档，tool_use 块的结构字段（type, id, name）也会消耗 token
+		if contentBlock, ok := dataMap["content_block"].(map[string]any); ok {
+			blockType, _ := contentBlock["type"].(string)
+			
+			if blockType == "tool_use" {
+				// 工具调用结构开销：
+				// - "type": "tool_use" ≈ 3 tokens
+				// - "id": "toolu_xxx" ≈ 8 tokens  
+				// - "name" 关键字 ≈ 1 token
+				// - 工具名称本身的 token（使用 estimateToolName 计算）
+				esp.ctx.totalOutputTokens += 12 // 结构字段固定开销
+				
+				if toolName, ok := contentBlock["name"].(string); ok {
+					esp.ctx.totalOutputTokens += esp.ctx.tokenEstimator.EstimateTextTokens(toolName)
+				}
+			}
+		}
+	
+	// 其他事件类型（message_start, content_block_stop, message_delta, message_stop 等）
+	// 不包含实际内容，不累计 token
 	}
 
 	esp.ctx.c.Writer.Flush()
@@ -424,7 +471,7 @@ func (esp *EventStreamProcessor) handleExceptionEvent(dataMap map[string]any) bo
 			},
 			"usage": map[string]any{
 				"input_tokens":  esp.ctx.inputTokens,
-				"output_tokens": esp.ctx.tokenEstimator.EstimateOutputTokensFromChars(esp.ctx.totalOutputChars, false),
+				"output_tokens": esp.ctx.totalOutputTokens,
 			},
 		}
 

@@ -330,208 +330,105 @@ func stringPtr(s string) *string {
 	return &s
 }
 
-// TestEstimateOutputTokens 测试输出token估算方法
-func TestEstimateOutputTokens(t *testing.T) {
+// TestEstimateToolUseTokens 测试工具调用token精确计算
+func TestEstimateToolUseTokens(t *testing.T) {
 	estimator := NewTokenEstimator()
 
 	tests := []struct {
-		name        string
-		textContent string
-		hasToolUse  bool
-		expected    int
-		description string
+		name      string
+		toolName  string
+		toolInput map[string]any
+		expected  int
+		tolerance float64
 	}{
 		{
-			name:        "简单文本无工具",
-			textContent: "Hello, world!",
-			hasToolUse:  false,
-			expected:    4,
-			description: "纯文本响应，无工具调用",
+			name:     "简单工具调用",
+			toolName: "get_weather",
+			toolInput: map[string]any{
+				"location": "San Francisco",
+			},
+			expected:  28, // 结构(13) + 名称(3) + 参数(12)
+			tolerance: 0.3,
 		},
 		{
-			name:        "简单文本有工具",
-			textContent: "Hello, world!",
-			hasToolUse:  true,
-			expected:    5,
-			description: "文本响应 + 工具调用结构化开销",
+			name:     "复杂工具调用",
+			toolName: "search_database",
+			toolInput: map[string]any{
+				"query":  "SELECT * FROM users WHERE age > 18",
+				"limit":  100,
+				"offset": 0,
+				"filters": map[string]any{
+					"status":     "active",
+					"created_at": "2024-01-01",
+				},
+			},
+			expected:  60, // 结构(13) + 名称(4) + 参数(43)
+			tolerance: 0.3,
 		},
 		{
-			name:        "空文本",
-			textContent: "",
-			hasToolUse:  false,
-			expected:    0,
-			description: "空响应",
+			name:      "空参数工具",
+			toolName:  "get_time",
+			toolInput: map[string]any{},
+			expected:  17, // 结构(13) + 名称(3) + 空参数(1)
+			tolerance: 0.3,
 		},
 		{
-			name:        "长文本无工具",
-			textContent: "This is a longer text response that contains multiple sentences.",
-			hasToolUse:  false,
-			expected:    22,
-			description: "长文本响应，无工具调用",
+			name:      "nil参数工具",
+			toolName:  "ping",
+			toolInput: nil,
+			expected:  17, // 结构(13) + 名称(2) + 空参数(1)
+			tolerance: 0.3,
 		},
 		{
-			name:        "长文本有工具",
-			textContent: "This is a longer text response that contains multiple sentences.",
-			hasToolUse:  true,
-			expected:    26,
-			description: "长文本响应 + 工具调用结构化开销",
+			name:     "MCP风格工具名",
+			toolName: "mcp__Playwright__browser_navigate",
+			toolInput: map[string]any{
+				"url": "https://example.com",
+			},
+			expected:  40, // 结构(13) + 长名称(15) + 参数(12)
+			tolerance: 0.3,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := estimator.EstimateOutputTokens(tt.textContent, tt.hasToolUse)
+			result := estimator.EstimateToolUseTokens(tt.toolName, tt.toolInput)
 
-			// 允许±30%的误差
-			tolerance := float64(tt.expected) * 0.3
+			// 允许指定的误差范围
+			tolerance := float64(tt.expected) * tt.tolerance
 			diff := math.Abs(float64(result - tt.expected))
 
 			if diff > tolerance {
 				t.Errorf("%s: 估算值=%d, 预期值=%d, 误差=%.1f%%",
 					tt.name, result, tt.expected, diff/float64(tt.expected)*100)
 			} else {
-				t.Logf("✅ %s: 估算值=%d, 预期值=%d",
-					tt.name, result, tt.expected)
+				t.Logf("✅ %s: 估算值=%d, 预期值=%d, 误差=%.1f%%",
+					tt.name, result, tt.expected, diff/float64(tt.expected)*100)
 			}
 		})
 	}
 }
 
-// TestEstimateOutputTokens_Consistency 测试与原有逻辑的一致性
-func TestEstimateOutputTokens_Consistency(t *testing.T) {
+// TestEstimateToolUseTokens_Components 测试工具调用token的组成部分
+func TestEstimateToolUseTokens_Components(t *testing.T) {
 	estimator := NewTokenEstimator()
 
-	testCases := []struct {
-		textContent string
-		hasToolUse  bool
-	}{
-		{"Hello", false},
-		{"Hello", true},
-		{"This is a test message", false},
-		{"This is a test message", true},
-		{"你好世界", false},
-		{"你好世界", true},
-		{"", false},
-		{"", true},
+	// 测试简单工具调用的token组成
+	toolName := "get_weather"
+	toolInput := map[string]any{
+		"location": "San Francisco",
 	}
 
-	for _, tc := range testCases {
-		// 新方法
-		newResult := estimator.EstimateOutputTokens(tc.textContent, tc.hasToolUse)
+	totalTokens := estimator.EstimateToolUseTokens(toolName, toolInput)
 
-		// 原有逻辑（模拟）
-		baseTokens := estimator.EstimateTextTokens(tc.textContent)
-		oldResult := baseTokens
-		if tc.hasToolUse {
-			oldResult = int(float64(baseTokens) * 1.2)
-		}
-		if oldResult < 1 && len(tc.textContent) > 0 {
-			oldResult = 1
-		}
-
-		if newResult != oldResult {
-			t.Errorf("不一致: textContent=%q, hasToolUse=%v, 新方法=%d, 原逻辑=%d",
-				tc.textContent, tc.hasToolUse, newResult, oldResult)
-		}
+	// 验证总token数在合理范围内
+	// 结构字段(13) + 工具名称(3) + 参数内容(~12) ≈ 28 tokens
+	if totalTokens < 20 || totalTokens > 40 {
+		t.Errorf("工具调用token数不在合理范围: %d (期望 20-40)", totalTokens)
 	}
 
-	t.Logf("✅ 所有测试用例与原有逻辑一致")
-}
-
-// TestEstimateOutputTokensFromChars 测试基于字符数的输出token估算
-func TestEstimateOutputTokensFromChars(t *testing.T) {
-	estimator := NewTokenEstimator()
-
-	tests := []struct {
-		name       string
-		charCount  int
-		hasToolUse bool
-		expected   int
-	}{
-		{
-			name:       "简单文本无工具",
-			charCount:  16, // "Hello, world!" ≈ 16字符
-			hasToolUse: false,
-			expected:   4, // 16 / 4 = 4 tokens
-		},
-		{
-			name:       "简单文本有工具",
-			charCount:  16,
-			hasToolUse: true,
-			expected:   4, // 4 * 1.2 = 4.8 ≈ 4 tokens (int转换)
-		},
-		{
-			name:       "零字符",
-			charCount:  0,
-			hasToolUse: false,
-			expected:   0,
-		},
-		{
-			name:       "长文本无工具",
-			charCount:  100,
-			hasToolUse: false,
-			expected:   25, // 100 / 4 = 25 tokens
-		},
-		{
-			name:       "长文本有工具",
-			charCount:  100,
-			hasToolUse: true,
-			expected:   30, // 25 * 1.2 = 30 tokens
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := estimator.EstimateOutputTokensFromChars(tt.charCount, tt.hasToolUse)
-
-			if result != tt.expected {
-				t.Errorf("%s: 估算值=%d, 预期值=%d",
-					tt.name, result, tt.expected)
-			} else {
-				t.Logf("✅ %s: 估算值=%d, 预期值=%d",
-					tt.name, result, tt.expected)
-			}
-		})
-	}
-}
-
-// TestEstimateOutputTokensFromChars_Consistency 测试与原有逻辑的一致性
-func TestEstimateOutputTokensFromChars_Consistency(t *testing.T) {
-	estimator := NewTokenEstimator()
-
-	testCases := []struct {
-		charCount  int
-		hasToolUse bool
-	}{
-		{10, false},
-		{10, true},
-		{50, false},
-		{50, true},
-		{100, false},
-		{100, true},
-		{0, false},
-		{0, true},
-	}
-
-	for _, tc := range testCases {
-		// 新方法
-		newResult := estimator.EstimateOutputTokensFromChars(tc.charCount, tc.hasToolUse)
-
-		// 原有逻辑（模拟 stream_processor.go 的旧代码）
-		baseTokens := tc.charCount / 4 // config.TokenEstimationRatio
-		oldResult := baseTokens
-		if tc.hasToolUse {
-			oldResult = int(float64(baseTokens) * 1.2) // config.ToolCallTokenOverhead
-		}
-		if oldResult < 1 && tc.charCount > 0 {
-			oldResult = 1 // config.MinOutputTokens
-		}
-
-		if newResult != oldResult {
-			t.Errorf("不一致: charCount=%d, hasToolUse=%v, 新方法=%d, 原逻辑=%d",
-				tc.charCount, tc.hasToolUse, newResult, oldResult)
-		}
-	}
-
-	t.Logf("✅ 所有测试用例与原有逻辑一致")
+	t.Logf("✅ 工具调用总tokens: %d", totalTokens)
+	t.Logf("   - 结构字段开销: ~13 tokens (type, id, name, input关键字)")
+	t.Logf("   - 工具名称: ~%d tokens", estimator.estimateToolName(toolName))
+	t.Logf("   - 参数内容: ~%d tokens", totalTokens-13-estimator.estimateToolName(toolName))
 }

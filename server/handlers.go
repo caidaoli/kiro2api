@@ -347,8 +347,36 @@ func handleNonStreamRequest(c *gin.Context, anthropicReq types.AnthropicRequest,
 	// 使用新的stop_reason管理器，确保符合Claude官方规范
 	stopReasonManager := NewStopReasonManager(anthropicReq)
 
-	// 计算输出tokens（使用TokenEstimator统一算法）
-	outputTokens := estimator.EstimateOutputTokens(textAgg, sawToolUse)
+	// *** 关键修复：基于实际发送给客户端的内容计算 token ***
+	// 设计原则：token 计费应该基于实际下发的内容，而不是上游原始数据
+	// 原因：
+	// 1. 格式转换：CodeWhisperer → Claude 格式可能有差异
+	// 2. 计费准确性：客户端消费的是 contexts，而不是 textAgg/allTools
+	// 3. 一致性：确保 token 计算与实际响应内容完全一致
+	outputTokens := 0
+	for _, contentBlock := range contexts {
+		blockType, _ := contentBlock["type"].(string)
+		
+		switch blockType {
+		case "text":
+			// 文本块：基于实际发送的文本内容
+			if text, ok := contentBlock["text"].(string); ok {
+				outputTokens += estimator.EstimateTextTokens(text)
+			}
+		
+		case "tool_use":
+			// 工具调用块：基于实际发送的工具名称和参数
+			// 这里使用与 SSE 响应相同的 token 计算逻辑
+			toolName, _ := contentBlock["name"].(string)
+			toolInput, _ := contentBlock["input"].(map[string]any)
+			outputTokens += estimator.EstimateToolUseTokens(toolName, toolInput)
+		}
+	}
+
+	// 最小 token 保护：确保非空响应至少有 1 token
+	if outputTokens < 1 && len(contexts) > 0 {
+		outputTokens = 1
+	}
 
 	stopReasonManager.UpdateToolCallStatus(sawToolUse, sawToolUse)
 	stopReason := stopReasonManager.DetermineStopReason()
