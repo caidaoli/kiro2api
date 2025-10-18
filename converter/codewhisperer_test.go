@@ -644,3 +644,4 @@ func TestBuildCodeWhispererRequest_OrphanUserMessages(t *testing.T) {
 		assert.Equal(t, "第三个问题（当前）", cwReq.ConversationState.CurrentMessage.UserInputMessage.Content)
 	})
 }
+

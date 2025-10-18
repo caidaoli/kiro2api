@@ -80,7 +80,7 @@ func (rp *RobustEventStreamParser) parseSingleMessageWithValidation(data []byte)
 	if len(data) < 12 {
 		return nil, 0, NewParseError("数据长度不足以包含 Prelude CRC", nil)
 	}
-	preludeCRC := binary.BigEndian.Uint32(data[8:12])
+	// preludeCRC := binary.BigEndian.Uint32(data[8:12])
 
 	// 验证 Prelude CRC（前8字节：totalLength + headerLength）
 	// calculatedPreludeCRC := crc32.Checksum(data[:8], rp.crcTable)
@@ -121,22 +121,19 @@ func (rp *RobustEventStreamParser) parseSingleMessageWithValidation(data []byte)
 
 	// 添加详细的payload调试信息
 	logger.Debug("Payload调试信息",
-		logger.Int("total_length", int(totalLength)),
-		logger.Int("header_length", int(headerLength)),
-		logger.String("prelude_crc", fmt.Sprintf("%08x", preludeCRC)),
-		logger.Int("payload_start", int(payloadStart)),
-		logger.Int("payload_end", payloadEnd),
-		logger.Int("payload_len", len(payloadData)),
-		logger.String("payload_hex", func() string {
-			if len(payloadData) > 20 {
-				return fmt.Sprintf("%x", payloadData[:20]) + "..."
-			}
-			return fmt.Sprintf("%x", payloadData)
-		}()),
+		// logger.Int("total_length", int(totalLength)),
+		// logger.Int("header_length", int(headerLength)),
+		// logger.String("prelude_crc", fmt.Sprintf("%08x", preludeCRC)),
+		// logger.Int("payload_start", int(payloadStart)),
+		// logger.Int("payload_end", payloadEnd),
+		// logger.Int("payload_len", len(payloadData)),
+		// logger.String("payload_hex", func() string {
+		// 	if len(payloadData) > 20 {
+		// 		return fmt.Sprintf("%x", payloadData[:20]) + "..."
+		// 	}
+		// 	return fmt.Sprintf("%x", payloadData)
+		// }()),
 		logger.String("payload_raw", func() string {
-			if len(payloadData) > 100 {
-				return string(payloadData[:100]) + "..."
-			}
 			return string(payloadData)
 		}()))
 

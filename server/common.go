@@ -236,9 +236,9 @@ func (s *AnthropicStreamSender) SendEvent(c *gin.Context, data any) error {
 	// 压缩日志：仅记录事件类型与负载长度
 	logger.Debug("发送SSE事件",
 		addReqFields(c,
-			logger.String("direction", "downstream_send"),
+			// logger.String("direction", "downstream_send"),
 			logger.String("event", eventType),
-			logger.Int("payload_len", len(json)),
+			// logger.Int("payload_len", len(json)),
 			logger.String("payload_preview", string(json)),
 		)...)
 
