@@ -125,7 +125,7 @@ func (cmp *CompliantMessageProcessor) processEventMessage(message *EventStreamMe
 	}
 
 	// 未知事件类型，记录日志但不报错
-	logger.Info("未知事件类型",
+	logger.Debug("未知事件类型",
 		logger.String("event_type", eventType),
 		logger.Any("available_handlers", func() []string {
 			var keys []string

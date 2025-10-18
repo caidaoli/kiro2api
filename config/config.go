@@ -2,6 +2,7 @@ package config
 
 // ModelMap 模型映射表
 var ModelMap = map[string]string{
+	"claude-sonnet-4-5":          "CLAUDE_SONNET_4_5_20250929_V1_0",
 	"claude-sonnet-4-5-20250929": "CLAUDE_SONNET_4_5_20250929_V1_0",
 	"claude-sonnet-4-20250514":   "CLAUDE_SONNET_4_20250514_V1_0",
 	"claude-3-7-sonnet-20250219": "CLAUDE_3_7_SONNET_20250219_V1_0",
