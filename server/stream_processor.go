@@ -41,6 +41,11 @@ type StreamProcessorContext struct {
 	// 工具调用跟踪
 	toolUseIdByBlockIndex map[int]string
 	completedToolUseIds   map[string]bool // 已完成的工具ID集合（用于stop_reason判断）
+	
+	// *** 新增：JSON字节累加器（修复分段整除精度损失） ***
+	// 问题：每个 input_json_delta 单独计算 len(partialJSON)/4 会导致小于4字节的分段被舍弃
+	// 解决：累加每个块的JSON字节数，在 content_block_stop 时一次性计算 token
+	jsonBytesByBlockIndex map[int]int // 每个工具块累积的JSON字节数
 }
 
 // NewStreamProcessorContext 创建流处理上下文
@@ -65,6 +70,7 @@ func NewStreamProcessorContext(
 		compliantParser:       parser.NewCompliantEventStreamParser(),
 		toolUseIdByBlockIndex: make(map[int]string),
 		completedToolUseIds:   make(map[string]bool),
+		jsonBytesByBlockIndex: make(map[int]int), // *** 初始化JSON字节累加器 ***
 	}
 }
 
@@ -175,6 +181,19 @@ func (ctx *StreamProcessorContext) processToolUseStop(dataMap map[string]any) {
 		return
 	}
 
+	// *** 修复：在块结束时计算累加的JSON字节数的token ***
+	// 使用进一法（向上取整）确保不低估token消耗
+	if jsonBytes, exists := ctx.jsonBytesByBlockIndex[idx]; exists && jsonBytes > 0 {
+		tokens := (jsonBytes + 3) / 4  // 进一法: ceil(jsonBytes / 4)
+		ctx.totalOutputTokens += tokens
+		delete(ctx.jsonBytesByBlockIndex, idx)
+		
+		logger.Debug("content_block_stop计算JSON tokens",
+			logger.Int("block_index", idx),
+			logger.Int("json_bytes", jsonBytes),
+			logger.Int("tokens", tokens))
+	}
+
 	if toolId, exists := ctx.toolUseIdByBlockIndex[idx]; exists && toolId != "" {
 		// *** 关键修复：在删除前先记录到已完成工具集合 ***
 		// 问题：直接删除导致sendFinalEvents()中len(toolUseIdByBlockIndex)==0
@@ -225,10 +244,23 @@ func (ctx *StreamProcessorContext) sendFinalEvents() error {
 	// 设计原则：token 计费应该基于实际发送给客户端的 SSE 事件内容
 	// totalOutputTokens 在每次发送事件时累计，确保与实际输出内容一致
 	outputTokens := ctx.totalOutputTokens
-	
-	// 最小 token 保护：确保非空响应至少有 1 token
-	if outputTokens < 1 && (len(ctx.toolUseIdByBlockIndex) > 0 || len(ctx.completedToolUseIds) > 0) {
-		outputTokens = 1
+
+	// *** 完善的最小 token 保护机制 ***
+	// 问题：某些边缘情况（如只有空格、特殊字符等）可能导致 totalOutputTokens 为 0
+	// 保护条件：只要处理了事件或有完成的内容块，output_tokens 就不应该为 0
+	if outputTokens < 1 {
+		// 检查是否有任何内容被发送
+		hasContent := len(ctx.completedToolUseIds) > 0 ||
+		              len(ctx.toolUseIdByBlockIndex) > 0 ||
+		              ctx.totalProcessedEvents > 0
+
+		if hasContent {
+			outputTokens = 1  // 最小保护：至少 1 token
+			logger.Debug("触发最小token保护",
+				logger.Int("processed_events", ctx.totalProcessedEvents),
+				logger.Int("completed_tools", len(ctx.completedToolUseIds)),
+				logger.Int("active_tools", len(ctx.toolUseIdByBlockIndex)))
+		}
 	}
 
 	// 确定stop_reason
@@ -395,10 +427,12 @@ func (esp *EventStreamProcessor) processEvent(event parser.SSEEvent) error {
 				}
 			
 			case "input_json_delta":
-				// 工具调用参数 JSON 增量
+				// *** 修复：累加JSON字节数，延迟到content_block_stop时统一计算 ***
+				// 问题：分段整除导致精度损失（例如 3字节/4=0, 2字节/4=0）
+				// 解决：累加所有分段的字节数，在块结束时一次性计算 token
 				if partialJSON, ok := delta["partial_json"].(string); ok {
-					// 使用字符数估算（JSON 密度约 4 字符/token）
-					esp.ctx.totalOutputTokens += len(partialJSON) / 4
+					index := extractIndex(dataMap)
+					esp.ctx.jsonBytesByBlockIndex[index] += len(partialJSON)
 				}
 			}
 		}

@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"math"
 	"strings"
 
 	"kiro2api/config"
@@ -115,7 +116,7 @@ func (e *TokenEstimator) EstimateTokens(req *types.CountTokensRequest) int {
 					}
 
 					schemaLen := len(jsonBytes)
-					schemaTokens := int(float64(schemaLen) / schemaCharsPerToken)
+					schemaTokens := int(math.Ceil(float64(schemaLen) / schemaCharsPerToken))  // 进一法
 
 					// $schema字段URL开销（优化：降低开销）
 					if strings.Contains(string(jsonBytes), "$schema") {
@@ -159,8 +160,8 @@ func (e *TokenEstimator) estimateToolName(name string) int {
 		return 0
 	}
 
-	// 基础估算：按字符长度
-	baseTokens := len(name) / 2 // 工具名称通常极其密集（比普通文本密集2倍）
+	// 基础估算：按字符长度（使用进一法）
+	baseTokens := (len(name) + 1) / 2 // 工具名称通常极其密集（比普通文本密集2倍）
 
 	// 下划线分词惩罚：每个下划线可能导致额外的token
 	underscoreCount := strings.Count(name, "_")
@@ -248,7 +249,7 @@ func (e *TokenEstimator) EstimateTextTokens(text string) int {
 			charsPerToken = 2.5
 		}
 
-		nonChineseTokens = int(float64(nonChineseChars) / charsPerToken)
+		nonChineseTokens = int(math.Ceil(float64(nonChineseChars) / charsPerToken))  // 进一法
 		if nonChineseTokens < 1 {
 			nonChineseTokens = 1 // 至少1 token
 		}
