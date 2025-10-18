@@ -437,3 +437,101 @@ func TestEstimateOutputTokens_Consistency(t *testing.T) {
 
 	t.Logf("✅ 所有测试用例与原有逻辑一致")
 }
+
+// TestEstimateOutputTokensFromChars 测试基于字符数的输出token估算
+func TestEstimateOutputTokensFromChars(t *testing.T) {
+	estimator := NewTokenEstimator()
+
+	tests := []struct {
+		name       string
+		charCount  int
+		hasToolUse bool
+		expected   int
+	}{
+		{
+			name:       "简单文本无工具",
+			charCount:  16, // "Hello, world!" ≈ 16字符
+			hasToolUse: false,
+			expected:   4, // 16 / 4 = 4 tokens
+		},
+		{
+			name:       "简单文本有工具",
+			charCount:  16,
+			hasToolUse: true,
+			expected:   4, // 4 * 1.2 = 4.8 ≈ 4 tokens (int转换)
+		},
+		{
+			name:       "零字符",
+			charCount:  0,
+			hasToolUse: false,
+			expected:   0,
+		},
+		{
+			name:       "长文本无工具",
+			charCount:  100,
+			hasToolUse: false,
+			expected:   25, // 100 / 4 = 25 tokens
+		},
+		{
+			name:       "长文本有工具",
+			charCount:  100,
+			hasToolUse: true,
+			expected:   30, // 25 * 1.2 = 30 tokens
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := estimator.EstimateOutputTokensFromChars(tt.charCount, tt.hasToolUse)
+
+			if result != tt.expected {
+				t.Errorf("%s: 估算值=%d, 预期值=%d",
+					tt.name, result, tt.expected)
+			} else {
+				t.Logf("✅ %s: 估算值=%d, 预期值=%d",
+					tt.name, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestEstimateOutputTokensFromChars_Consistency 测试与原有逻辑的一致性
+func TestEstimateOutputTokensFromChars_Consistency(t *testing.T) {
+	estimator := NewTokenEstimator()
+
+	testCases := []struct {
+		charCount  int
+		hasToolUse bool
+	}{
+		{10, false},
+		{10, true},
+		{50, false},
+		{50, true},
+		{100, false},
+		{100, true},
+		{0, false},
+		{0, true},
+	}
+
+	for _, tc := range testCases {
+		// 新方法
+		newResult := estimator.EstimateOutputTokensFromChars(tc.charCount, tc.hasToolUse)
+
+		// 原有逻辑（模拟 stream_processor.go 的旧代码）
+		baseTokens := tc.charCount / 4 // config.TokenEstimationRatio
+		oldResult := baseTokens
+		if tc.hasToolUse {
+			oldResult = int(float64(baseTokens) * 1.2) // config.ToolCallTokenOverhead
+		}
+		if oldResult < 1 && tc.charCount > 0 {
+			oldResult = 1 // config.MinOutputTokens
+		}
+
+		if newResult != oldResult {
+			t.Errorf("不一致: charCount=%d, hasToolUse=%v, 新方法=%d, 原逻辑=%d",
+				tc.charCount, tc.hasToolUse, newResult, oldResult)
+		}
+	}
+
+	t.Logf("✅ 所有测试用例与原有逻辑一致")
+}

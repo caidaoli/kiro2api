@@ -318,6 +318,38 @@ func (e *TokenEstimator) EstimateOutputTokens(textContent string, hasToolUse boo
 	return baseTokens
 }
 
+// EstimateOutputTokensFromChars 基于字符数估算输出token
+// 用于流式处理场景，避免保存完整文本内容的内存开销
+//
+// 参数:
+//   - charCount: 输出的字符数（通过JSON序列化统计）
+//   - hasToolUse: 是否包含工具调用
+//
+// 返回:
+//   - 估算的token数量
+//
+// 设计原则:
+//   - 性能优先: 避免保存完整文本，仅使用字符数统计
+//   - 一致性: 与EstimateOutputTokens使用相同的开销系数
+//   - 适用场景: 流式响应的token计算
+func (e *TokenEstimator) EstimateOutputTokensFromChars(charCount int, hasToolUse bool) int {
+	// 基于字符数的简单估算
+	// 使用config.TokenEstimationRatio (默认4字符/token)
+	baseTokens := charCount / config.TokenEstimationRatio
+
+	// 工具调用结构化开销
+	if hasToolUse {
+		baseTokens = int(float64(baseTokens) * config.ToolCallTokenOverhead)
+	}
+
+	// 最小输出token保护
+	if baseTokens < config.MinOutputTokens && charCount > 0 {
+		baseTokens = config.MinOutputTokens
+	}
+
+	return baseTokens
+}
+
 // estimateContentBlock 估算单个内容块的token数量（通用map格式）
 // 支持的内容类型：
 // - text: 文本块

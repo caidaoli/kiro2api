@@ -6,7 +6,6 @@ import (
 	"io"
 	"strings"
 
-	"kiro2api/config"
 	"kiro2api/logger"
 	"kiro2api/parser"
 	"kiro2api/types"
@@ -223,18 +222,10 @@ func (ctx *StreamProcessorContext) sendFinalEvents() error {
 
 	ctx.stopReasonManager.UpdateToolCallStatus(hasActiveTools, hasCompletedTools)
 
-	// 计算输出tokens（基于totalOutputChars直接估算）
-	// 移除rawDataBuffer后，直接使用已统计的字符数进行估算
-	baseTokens := ctx.totalOutputChars / config.TokenEstimationRatio
-
-	// 如果包含工具调用，增加结构化开销
-	outputTokens := baseTokens
-	if len(ctx.toolUseIdByBlockIndex) > 0 {
-		outputTokens = int(float64(baseTokens) * config.ToolCallTokenOverhead)
-	}
-	if outputTokens < config.MinOutputTokens && ctx.totalOutputChars > 0 {
-		outputTokens = config.MinOutputTokens
-	}
+	// 计算输出tokens（使用TokenEstimator统一算法）
+	// 判断是否有工具调用（包括活跃的和已完成的）
+	hasToolUse := len(ctx.toolUseIdByBlockIndex) > 0 || len(ctx.completedToolUseIds) > 0
+	outputTokens := ctx.tokenEstimator.EstimateOutputTokensFromChars(ctx.totalOutputChars, hasToolUse)
 
 	// 确定stop_reason
 	stopReason := ctx.stopReasonManager.DetermineStopReason()
@@ -433,7 +424,7 @@ func (esp *EventStreamProcessor) handleExceptionEvent(dataMap map[string]any) bo
 			},
 			"usage": map[string]any{
 				"input_tokens":  esp.ctx.inputTokens,
-				"output_tokens": esp.ctx.totalOutputChars / config.TokenEstimationRatio, // 简单估算
+				"output_tokens": esp.ctx.tokenEstimator.EstimateOutputTokensFromChars(esp.ctx.totalOutputChars, false),
 			},
 		}
 
