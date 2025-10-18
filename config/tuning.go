@@ -8,8 +8,8 @@ const (
 	// ========== 解析器配置 ==========
 
 	// ParserMaxErrors 解析器容忍的最大错误次数
-	// 超过此次数后停止解析
-	ParserMaxErrors = 10
+	// 用于所有解析器，防止死循环
+	ParserMaxErrors = 5
 
 	// ========== Token缓存配置 ==========
 

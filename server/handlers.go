@@ -50,13 +50,8 @@ func extractRelevantHeaders(c *gin.Context) map[string]string {
 }
 
 // handleStreamRequest 处理流式请求
-func handleStreamRequest(c *gin.Context, anthropicReq types.AnthropicRequest, token types.TokenInfo) {
-	// 转换为TokenWithUsage（简化版本）
-	tokenWithUsage := &types.TokenWithUsage{
-		TokenInfo:      token,
-		AvailableCount: 100, // 默认可用次数
-		LastUsageCheck: time.Now(),
-	}
+// handleStreamRequest 处理流式请求
+func handleStreamRequest(c *gin.Context, anthropicReq types.AnthropicRequest, tokenWithUsage *types.TokenWithUsage) {
 	sender := &AnthropicStreamSender{}
 	handleGenericStreamRequest(c, anthropicReq, tokenWithUsage, sender, createAnthropicStreamEvents)
 }
@@ -215,7 +210,7 @@ func handleNonStreamRequest(c *gin.Context, anthropicReq types.AnthropicRequest,
 
 	// 使用新的符合AWS规范的解析器，但在非流式模式下增加超时保护
 	compliantParser := parser.NewCompliantEventStreamParser()
-	compliantParser.SetMaxErrors(5) // 限制最大错误次数以防死循环
+	compliantParser.SetMaxErrors(config.ParserMaxErrors) // 限制最大错误次数以防死循环
 
 	// 为非流式解析添加超时保护
 	result, err := func() (*parser.ParseResult, error) {

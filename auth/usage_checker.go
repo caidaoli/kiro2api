@@ -128,7 +128,7 @@ func (c *UsageLimitsChecker) logUsageLimits(limits *types.UsageLimits) {
 					return "NONE"
 				}()))
 
-			if available <= 5 {
+			if available <= 1 {
 				logger.Warn("CREDIT使用量即将耗尽",
 					logger.Float64("remaining", available),
 					logger.String("recommendation", "考虑切换到其他token"))

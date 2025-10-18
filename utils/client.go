@@ -25,12 +25,6 @@ func init() {
 	// 创建统一的HTTP客户端
 	SharedHTTPClient = &http.Client{
 		Transport: &http.Transport{
-			// 连接池配置
-			MaxIdleConns:        200,
-			MaxIdleConnsPerHost: 100,
-			MaxConnsPerHost:     100,
-			IdleConnTimeout:     120 * time.Second,
-
 			// 连接建立配置
 			DialContext: (&net.Dialer{
 				Timeout:   15 * time.Second,
@@ -52,11 +46,8 @@ func init() {
 			},
 
 			// HTTP配置
-			ForceAttemptHTTP2:     false,
-			DisableCompression:    false,
-			WriteBufferSize:       32 * 1024,
-			ReadBufferSize:        32 * 1024,
-			ResponseHeaderTimeout: 60 * time.Second,
+			ForceAttemptHTTP2:  false,
+			DisableCompression: false,
 		},
 	}
 }

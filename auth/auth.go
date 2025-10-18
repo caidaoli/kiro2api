@@ -51,6 +51,14 @@ func (as *AuthService) GetToken() (types.TokenInfo, error) {
 	return as.tokenManager.getBestToken()
 }
 
+// GetTokenWithUsage 获取可用的token（包含使用信息）
+func (as *AuthService) GetTokenWithUsage() (*types.TokenWithUsage, error) {
+	if as.tokenManager == nil {
+		return nil, fmt.Errorf("token管理器未初始化")
+	}
+	return as.tokenManager.GetBestTokenWithUsage()
+}
+
 // GetTokenManager 获取底层的TokenManager（用于高级操作）
 func (as *AuthService) GetTokenManager() *TokenManager {
 	return as.tokenManager

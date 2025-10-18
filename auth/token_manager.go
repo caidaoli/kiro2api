@@ -90,6 +90,48 @@ func (tm *TokenManager) getBestToken() (types.TokenInfo, error) {
 	return bestToken.Token, nil
 }
 
+// GetBestTokenWithUsage 获取最优可用token（包含使用信息）
+// 统一锁管理：所有操作在单一锁保护下完成
+func (tm *TokenManager) GetBestTokenWithUsage() (*types.TokenWithUsage, error) {
+	tm.mutex.Lock()
+	defer tm.mutex.Unlock()
+
+	// 检查是否需要刷新缓存（在锁内）
+	if time.Since(tm.lastRefresh) > config.TokenCacheTTL {
+		if err := tm.refreshCacheUnlocked(); err != nil {
+			logger.Warn("刷新token缓存失败", logger.Err(err))
+		}
+	}
+
+	// 选择最优token（内部方法，不加锁）
+	bestToken := tm.selectBestTokenUnlocked()
+	if bestToken == nil {
+		return nil, fmt.Errorf("没有可用的token")
+	}
+
+	// 更新最后使用时间（在锁内，安全）
+	bestToken.LastUsed = time.Now()
+	available := bestToken.Available
+	if bestToken.Available > 0 {
+		bestToken.Available--
+	}
+
+	// 构造 TokenWithUsage
+	tokenWithUsage := &types.TokenWithUsage{
+		TokenInfo:       bestToken.Token,
+		UsageLimits:     bestToken.UsageInfo,
+		AvailableCount:  available, // 使用精确计算的可用次数
+		LastUsageCheck:  bestToken.LastUsed,
+		IsUsageExceeded: available <= 0,
+	}
+
+	logger.Debug("返回TokenWithUsage",
+		logger.Float64("available_count", available),
+		logger.Bool("is_exceeded", tokenWithUsage.IsUsageExceeded))
+
+	return tokenWithUsage, nil
+}
+
 // selectBestTokenUnlocked 按配置顺序选择下一个可用token
 // 内部方法：调用者必须持有 tm.mutex
 // 重构说明：从selectBestToken改为Unlocked后缀，明确锁约定

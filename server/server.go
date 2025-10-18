@@ -80,9 +80,9 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 			RequestType: "Anthropic",
 		}
 
-		tokenInfo, body, err := reqCtx.GetTokenAndBody()
+		tokenWithUsage, body, err := reqCtx.GetTokenWithUsageAndBody()
 		if err != nil {
-			return // 错误已在GetTokenAndBody中处理
+			return // 错误已在GetTokenWithUsageAndBody中处理
 		}
 
 		// 先解析为通用map以便处理工具格式
@@ -165,11 +165,11 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 		}
 
 		if anthropicReq.Stream {
-			handleStreamRequest(c, anthropicReq, tokenInfo)
+			handleStreamRequest(c, anthropicReq, tokenWithUsage)
 			return
 		}
 
-		handleNonStreamRequest(c, anthropicReq, tokenInfo)
+		handleNonStreamRequest(c, anthropicReq, tokenWithUsage.TokenInfo)
 	})
 
 	// Token计数端点

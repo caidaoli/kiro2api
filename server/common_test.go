@@ -20,12 +20,27 @@ func init() {
 
 // MockAuthService 用于测试的mock AuthService
 type MockAuthService struct {
-	token types.TokenInfo
-	err   error
+	token      types.TokenInfo
+	tokenUsage *types.TokenWithUsage
+	err        error
 }
 
 func (m *MockAuthService) GetToken() (types.TokenInfo, error) {
 	return m.token, m.err
+}
+
+func (m *MockAuthService) GetTokenWithUsage() (*types.TokenWithUsage, error) {
+	if m.tokenUsage != nil {
+		return m.tokenUsage, m.err
+	}
+	// 如果没有设置 tokenUsage，从 token 构造一个默认的
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &types.TokenWithUsage{
+		TokenInfo:      m.token,
+		AvailableCount: 100, // 测试默认值
+	}, nil
 }
 
 func TestRespondError(t *testing.T) {
