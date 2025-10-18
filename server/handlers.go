@@ -351,7 +351,7 @@ func handleNonStreamRequest(c *gin.Context, anthropicReq types.AnthropicRequest,
 	baseTokens := estimator.EstimateTextTokens(textAgg)
 	outputTokens := baseTokens
 	if sawToolUse {
-		outputTokens = int(float64(baseTokens) * 1.2) // 增加20%结构化开销
+		outputTokens = int(float64(baseTokens) * config.ToolCallTokenOverhead) // 使用配置常量
 	}
 	if outputTokens < 1 && len(textAgg) > 0 {
 		outputTokens = 1
