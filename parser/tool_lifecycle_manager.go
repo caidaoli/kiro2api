@@ -113,7 +113,7 @@ func (tlm *ToolLifecycleManager) HandleToolCallRequest(request ToolCallRequest) 
 					"type":  "tool_use",
 					"id":    toolCall.ID,
 					"name":  toolCall.Function.Name,
-					"input": arguments, // 使用解析后的参数而不是空对象
+					"input": map[string]any{}, // 符合Anthropic流式规范：content_block_start必须使用空对象
 				},
 			},
 		})
