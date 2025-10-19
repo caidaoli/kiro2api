@@ -321,7 +321,17 @@ func BuildCodeWhispererRequest(anthropicReq types.AnthropicRequest, ctx *gin.Con
 			// 根据req.json的实际结构，确保JSON Schema完整性
 			cwTool := types.CodeWhispererTool{}
 			cwTool.ToolSpecification.Name = tool.Name
-			cwTool.ToolSpecification.Description = tool.Description
+			
+			// 限制 description 长度为 10000 字符
+			if len(tool.Description) > config.MaxToolDescriptionLength {
+				cwTool.ToolSpecification.Description = tool.Description[:config.MaxToolDescriptionLength]
+				logger.Debug("工具描述超长已截断",
+					logger.String("tool_name", tool.Name),
+					logger.Int("original_length", len(tool.Description)),
+					logger.Int("max_length", config.MaxToolDescriptionLength))
+			} else {
+				cwTool.ToolSpecification.Description = tool.Description
+			}
 
 			// 直接使用原始的InputSchema，避免过度处理 (恢复v0.4兼容性)
 			cwTool.ToolSpecification.InputSchema = types.InputSchema{

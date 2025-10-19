@@ -421,6 +421,15 @@ LOG_FILE=/var/log/kiro2api.log          # 日志文件路径（可选）
 # - response_time: 响应时间
 ```
 
+#### 工具配置
+
+```bash
+# === 工具限制 ===
+MAX_TOOL_DESCRIPTION_LENGTH=10000        # 工具描述的最大长度（字符数，默认：10000）
+                                        # 用于限制 tool description 字段的长度
+                                        # 防止超长内容导致上游 API 错误
+```
+
 ## 故障排除
 
 ### 故障诊断

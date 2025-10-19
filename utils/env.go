@@ -2,6 +2,7 @@ package utils
 
 import (
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -50,6 +51,16 @@ func GetEnvBool(key string) bool {
 func GetEnvBoolWithDefault(key string, defaultValue bool) bool {
 	if value := os.Getenv(key); value != "" {
 		return GetEnvBool(key)
+	}
+	return defaultValue
+}
+
+// GetEnvIntWithDefault 获取整数类型环境变量（带默认值）
+func GetEnvIntWithDefault(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if intValue, err := strconv.Atoi(value); err == nil {
+			return intValue
+		}
 	}
 	return defaultValue
 }
