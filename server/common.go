@@ -64,6 +64,29 @@ func handleResponseReadError(c *gin.Context, err error) {
 }
 
 // 通用请求执行函数
+// filterSupportedTools 过滤掉不支持的工具（与上游转换逻辑保持一致）
+// 设计原则：
+// - DRY: 统一过滤逻辑，确保计费与上游请求一致
+// - KISS: 简单直接的过滤规则
+func filterSupportedTools(tools []types.AnthropicTool) []types.AnthropicTool {
+	if len(tools) == 0 {
+		return tools
+	}
+
+	filtered := make([]types.AnthropicTool, 0, len(tools))
+	for _, tool := range tools {
+		// 过滤不支持的工具：web_search（与 converter/codewhisperer.go 保持一致）
+		if tool.Name == "web_search" || tool.Name == "websearch" {
+			logger.Debug("过滤不支持的工具（token计算）",
+				logger.String("tool_name", tool.Name))
+			continue
+		}
+		filtered = append(filtered, tool)
+	}
+
+	return filtered
+}
+
 func executeCodeWhispererRequest(c *gin.Context, anthropicReq types.AnthropicRequest, tokenInfo types.TokenInfo, isStream bool) (*http.Response, error) {
 	req, err := buildCodeWhispererRequest(c, anthropicReq, tokenInfo, isStream)
 	if err != nil {

@@ -58,13 +58,13 @@ func handleStreamRequest(c *gin.Context, anthropicReq types.AnthropicRequest, to
 
 // handleGenericStreamRequest 通用流式请求处理
 func handleGenericStreamRequest(c *gin.Context, anthropicReq types.AnthropicRequest, token *types.TokenWithUsage, sender StreamEventSender, eventCreator func(string, int, string) []map[string]any) {
-	// 计算输入tokens
+	// 计算输入tokens（基于实际发送给上游的数据）
 	estimator := utils.NewTokenEstimator()
 	countReq := &types.CountTokensRequest{
 		Model:    anthropicReq.Model,
 		System:   anthropicReq.System,
 		Messages: anthropicReq.Messages,
-		Tools:    anthropicReq.Tools,
+		Tools:    filterSupportedTools(anthropicReq.Tools), // 过滤不支持的工具后计算
 	}
 	inputTokens := estimator.EstimateTokens(countReq)
 
@@ -183,13 +183,13 @@ func createAnthropicFinalEvents(outputTokens, inputTokens int, stopReason string
 
 // handleNonStreamRequest 处理非流式请求
 func handleNonStreamRequest(c *gin.Context, anthropicReq types.AnthropicRequest, token types.TokenInfo) {
-	// 计算输入tokens
+	// 计算输入tokens（基于实际发送给上游的数据）
 	estimator := utils.NewTokenEstimator()
 	countReq := &types.CountTokensRequest{
 		Model:    anthropicReq.Model,
 		System:   anthropicReq.System,
 		Messages: anthropicReq.Messages,
-		Tools:    anthropicReq.Tools,
+		Tools:    filterSupportedTools(anthropicReq.Tools), // 过滤不支持的工具后计算
 	}
 	inputTokens := estimator.EstimateTokens(countReq)
 
