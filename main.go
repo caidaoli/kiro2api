@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"os"
 	"path/filepath"
 
@@ -10,6 +11,9 @@ import (
 
 	"github.com/joho/godotenv"
 )
+
+//go:embed static/*
+var staticFS embed.FS
 
 func main() {
 	// 自动加载.env文件, 路径使用自身绝对路径拼接, 而不是当前工作目录
@@ -60,5 +64,5 @@ func main() {
 		os.Exit(1)
 	}
 
-	server.StartServer(port, clientToken, authService)
+	server.StartServer(port, clientToken, authService, staticFS)
 }

@@ -1,7 +1,9 @@
 package server
 
 import (
+	"embed"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"strings"
@@ -19,7 +21,7 @@ import (
 // 移除全局httpClient，使用utils包中的共享客户端
 
 // StartServer 启动HTTP代理服务器
-func StartServer(port string, authToken string, authService *auth.AuthService) {
+func StartServer(port string, authToken string, authService *auth.AuthService, staticFS embed.FS) {
 	// 设置 gin 模式
 	ginMode := os.Getenv("GIN_MODE")
 	if ginMode == "" {
@@ -38,10 +40,20 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 	// 只对 /v1 开头的端点进行认证
 	r.Use(PathBasedAuthMiddleware(authToken, []string{"/v1"}))
 
-	// 静态资源服务 - 前后端完全分离
-	r.Static("/static", "./static")
+	// 静态资源服务 - 使用嵌入的文件系统
+	staticSubFS, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		logger.Error("获取嵌入静态文件系统失败", logger.Err(err))
+		os.Exit(1)
+	}
+	r.StaticFS("/static", http.FS(staticSubFS))
 	r.GET("/", func(c *gin.Context) {
-		c.File("./static/index.html")
+		indexData, err := staticFS.ReadFile("static/index.html")
+		if err != nil {
+			c.String(http.StatusInternalServerError, "无法读取首页")
+			return
+		}
+		c.Data(http.StatusOK, "text/html; charset=utf-8", indexData)
 	})
 
 	// API端点 - 纯数据服务
