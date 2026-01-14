@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"kiro2api/logger"
 )
@@ -55,6 +56,17 @@ func loadConfigs() ([]AuthConfig, error) {
 
 	// 优先尝试从文件加载，失败后再作为JSON字符串处理
 	var configData string
+
+	// 判断不存在, 增加程序自身路径
+	fileInfo, err := os.Stat(jsonData)
+	if err != nil || fileInfo.IsDir() {
+		self_path, err := os.Executable()
+		if err != nil {
+			return nil, fmt.Errorf("获取自身路径失败: %w", err)
+		}
+		jsonData = filepath.Join(filepath.Dir(self_path), jsonData)
+	}
+
 	if fileInfo, err := os.Stat(jsonData); err == nil && !fileInfo.IsDir() {
 		// 是文件，读取文件内容
 		content, err := os.ReadFile(jsonData)
