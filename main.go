@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"strings"
 
 	"kiro2api/auth"
 	"kiro2api/logger"
@@ -43,14 +44,26 @@ func main() {
 		port = envPort
 	}
 
-	// 从环境变量获取客户端认证token（必需，无默认值）
+	// 绑定地址：默认 ""（= 监听所有接口），设置 BIND_HOST=127.0.0.1 可限制仅本机
+	bindHost := os.Getenv("BIND_HOST")
+
+	// 从环境变量获取客户端认证token
+	// - DISABLE_AUTH=true 时：跳过 auth middleware，KIRO_CLIENT_TOKEN 可为空
+	//   典型用法：kiro2api 放在上游网关（Sub2API / OneAPI 等）后面且绑 127.0.0.1，
+	//   由网关负责鉴权，kiro2api 本身不需要二次校验
+	// - 默认情况下，KIRO_CLIENT_TOKEN 必填
+	disableAuth := strings.EqualFold(os.Getenv("DISABLE_AUTH"), "true")
 	clientToken := os.Getenv("KIRO_CLIENT_TOKEN")
-	if clientToken == "" {
+	if !disableAuth && clientToken == "" {
 		logger.Error("致命错误: 未设置 KIRO_CLIENT_TOKEN 环境变量")
 		logger.Error("请在 .env 文件中设置强密码，例如: KIRO_CLIENT_TOKEN=your-secure-random-password")
 		logger.Error("安全提示: 请使用至少32字符的随机字符串")
+		logger.Error("或设置 DISABLE_AUTH=true 关闭 kiro2api 自身 auth（仅推荐在上游网关已鉴权的场景使用）")
 		os.Exit(1)
 	}
+	if disableAuth {
+		logger.Warn("DISABLE_AUTH=true，kiro2api 自身 auth middleware 已禁用，请确保上游网关或防火墙已做鉴权保护")
+	}
 
-	server.StartServer(port, clientToken, authService)
+	server.StartServer(bindHost, port, clientToken, disableAuth, authService)
 }
