@@ -1,7 +1,9 @@
 package main
 
 import (
+	"embed"
 	"os"
+	"path/filepath"
 
 	"kiro2api/auth"
 	"kiro2api/logger"
@@ -10,9 +12,19 @@ import (
 	"github.com/joho/godotenv"
 )
 
+//go:embed static/*
+var staticFS embed.FS
+
 func main() {
-	// 自动加载.env文件
-	if err := godotenv.Load(); err != nil {
+	// 自动加载.env文件, 路径使用自身绝对路径拼接, 而不是当前工作目录
+	self_path, err := os.Executable()
+	if err != nil {
+		logger.Error("获取自身路径失败", logger.Err(err))
+		os.Exit(1)
+	}
+	env_path := filepath.Join(filepath.Dir(self_path), ".env")
+	logger.Info("加载.env文件", logger.String("path", env_path))
+	if err := godotenv.Load(env_path); err != nil {
 		logger.Info("未找到.env文件，使用环境变量")
 	}
 
@@ -52,5 +64,5 @@ func main() {
 		os.Exit(1)
 	}
 
-	server.StartServer(port, clientToken, authService)
+	server.StartServer(port, clientToken, authService, staticFS)
 }
