@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -30,6 +31,38 @@ func TestModelMap_Claude35Haiku(t *testing.T) {
 	assert.Equal(t, "auto", model)
 }
 
+func TestModelMap_ClaudeSonnet46(t *testing.T) {
+	for _, key := range []string{"claude-sonnet-4-6", "claude-sonnet-4-6-20260205"} {
+		model, exists := ModelMap[key]
+		assert.True(t, exists, "key %s should exist", key)
+		assert.Equal(t, "claude-sonnet-4.6", model)
+	}
+}
+
+func TestModelMap_ClaudeOpus46(t *testing.T) {
+	for _, key := range []string{"claude-opus-4-6", "claude-opus-4-6-20260205"} {
+		model, exists := ModelMap[key]
+		assert.True(t, exists, "key %s should exist", key)
+		assert.Equal(t, "claude-opus-4.6", model)
+	}
+}
+
+func TestModelMap_ClaudeOpus45(t *testing.T) {
+	for _, key := range []string{"claude-opus-4-5", "claude-opus-4-5-20251101"} {
+		model, exists := ModelMap[key]
+		assert.True(t, exists, "key %s should exist", key)
+		assert.Equal(t, "claude-opus-4.5", model)
+	}
+}
+
+func TestModelMap_ClaudeHaiku45(t *testing.T) {
+	for _, key := range []string{"claude-haiku-4-5", "claude-haiku-4-5-20251001"} {
+		model, exists := ModelMap[key]
+		assert.True(t, exists, "key %s should exist", key)
+		assert.Equal(t, "claude-haiku-4.5", model)
+	}
+}
+
 func TestModelMap_NonExistentModel(t *testing.T) {
 	_, exists := ModelMap["non-existent-model"]
 	assert.False(t, exists)
@@ -42,6 +75,10 @@ func TestModelMap_AllModelsHaveMapping(t *testing.T) {
 		"claude-sonnet-4-20250514",
 		"claude-3-7-sonnet-20250219",
 		"claude-3-5-haiku-20241022",
+		"claude-sonnet-4-6",
+		"claude-opus-4-6",
+		"claude-opus-4-5",
+		"claude-haiku-4-5",
 	}
 
 	for _, model := range expectedModels {
@@ -51,14 +88,16 @@ func TestModelMap_AllModelsHaveMapping(t *testing.T) {
 }
 
 func TestModelMap_MappingsAreCorrectFormat(t *testing.T) {
+	// 允许的 value 格式：
+	//   - "CLAUDE_XXX_V1_0"：CodeWhisperer 精确 ModelId
+	//   - "claude-xxx-N.M"：kiro-cli 短 ID
+	//   - "auto"：Kiro 路由层自动选择
 	for inputModel, outputModel := range ModelMap {
-		// 输出模型应该是大写格式或"auto"
-		if outputModel != "auto" {
-			assert.Contains(t, outputModel, "CLAUDE",
-				"Model mapping for %s should contain 'CLAUDE'", inputModel)
-			assert.Contains(t, outputModel, "_V1_0",
-				"Model mapping for %s should contain '_V1_0'", inputModel)
-		}
+		isLegacyCW := strings.Contains(outputModel, "CLAUDE") && strings.Contains(outputModel, "_V1_0")
+		isKiroCli := strings.HasPrefix(outputModel, "claude-")
+		isAuto := outputModel == "auto"
+		assert.True(t, isLegacyCW || isKiroCli || isAuto,
+			"Model mapping for %s has invalid format: %s", inputModel, outputModel)
 	}
 }
 

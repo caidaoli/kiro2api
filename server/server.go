@@ -19,7 +19,12 @@ import (
 // 移除全局httpClient，使用utils包中的共享客户端
 
 // StartServer 启动HTTP代理服务器
-func StartServer(port string, authToken string, authService *auth.AuthService) {
+//
+// host 为空表示监听所有接口（":<port>"，即 0.0.0.0:<port> 和 [::]:<port>）；
+// 传 "127.0.0.1" 可限制仅本机访问，适合放在反向代理/网关后面。
+//
+// disableAuth=true 时，/v1 路径不再校验 Authorization/x-api-key（典型用于已由上游网关鉴权的场景）。
+func StartServer(host string, port string, authToken string, disableAuth bool, authService *auth.AuthService) {
 	// 设置 gin 模式
 	ginMode := os.Getenv("GIN_MODE")
 	if ginMode == "" {
@@ -35,8 +40,10 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 	// 注入请求ID，便于日志追踪
 	r.Use(RequestIDMiddleware())
 	r.Use(corsMiddleware())
-	// 只对 /v1 开头的端点进行认证
-	r.Use(PathBasedAuthMiddleware(authToken, []string{"/v1"}))
+	// 只对 /v1 开头的端点进行认证（disableAuth=true 时跳过所有认证）
+	if !disableAuth {
+		r.Use(PathBasedAuthMiddleware(authToken, []string{"/v1"}))
+	}
 
 	// 静态资源服务 - 前后端完全分离
 	r.Static("/static", "./static")
@@ -223,8 +230,9 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 		respondError(c, http.StatusNotFound, "%s", "404 未找到")
 	})
 
+	bindAddr := host + ":" + port
 	logger.Info("启动Anthropic API代理服务器",
-		logger.String("port", port),
+		logger.String("bind_addr", bindAddr),
 		logger.String("auth_token", "***"))
 	logger.Info("AuthToken 验证已启用")
 	logger.Info("可用端点:")
@@ -239,14 +247,14 @@ func StartServer(port string, authToken string, authService *auth.AuthService) {
 
 	// 创建自定义HTTP服务器以支持长时间请求
 	server := &http.Server{
-		Addr:    ":" + port,
+		Addr:    bindAddr,
 		Handler: r,
 	}
 
-	logger.Info("启动HTTP服务器", logger.String("port", port))
+	logger.Info("启动HTTP服务器", logger.String("bind_addr", bindAddr))
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		logger.Error("启动服务器失败", logger.Err(err), logger.String("port", port))
+		logger.Error("启动服务器失败", logger.Err(err), logger.String("bind_addr", bindAddr))
 		os.Exit(1)
 	}
 }
